@@ -3,7 +3,7 @@ Contributors: andrewbevitt
 Tags: cache
 Requires at least: 3.5
 Tested up to: 3.9.1
-Stable tag: 0.99-beta
+Stable tag: 1.0
 License: GPL2
 
 uWSGI Object Cache for WordPress.
