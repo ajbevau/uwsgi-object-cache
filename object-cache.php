@@ -3,7 +3,7 @@
  * Plugin Name: uWSGI Object Cache
  * Plugin URI: https://github.com/andrewbevitt/uwsgi-object-cache
  * Description: WordPress Object Cache built on top of uWSGI.
- * Version: 0.99-beta
+ * Version: 1.0.1
  * Author: Andrew Bevitt
  * Author URI: http://andrewbevitt.com/
  * License: GPL2

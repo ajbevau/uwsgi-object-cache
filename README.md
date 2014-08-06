@@ -10,7 +10,7 @@ This plugin uses the uWSGI cache for object caching in WordPress.
 
 **INSTALL**
 
-1. Copy the `object-code.php` file to your `WP_CONTENT_DIR`
+1. Move the `object-code.php` file to your `WP_CONTENT_DIR`
 2. Add `define( 'UWSGI_CACHE', 'YOUR CACHE NAME HERE' );` to `wp-config.php`
 
 

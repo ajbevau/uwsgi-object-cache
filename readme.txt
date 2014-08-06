@@ -3,7 +3,7 @@ Contributors: andrewbevitt
 Tags: cache
 Requires at least: 3.5
 Tested up to: 3.9.1
-Stable tag: 1.0
+Stable tag: 1.0.1
 License: GPL2
 
 uWSGI Object Cache for WordPress.
@@ -13,7 +13,7 @@ uWSGI Object Cache for WordPress.
 GitHub repository: https://github.com/andrewbevitt/uwsgi-object-cache
 
 == Installation ==
-Copy the object-cache.php file to your WP_CONTENT_DIR.
+**Move** the `object-cache.php` file to your WP_CONTENT_DIR.
 
 Add the following to your wp-config.php
 
