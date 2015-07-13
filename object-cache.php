@@ -3,7 +3,7 @@
  * Plugin Name: uWSGI Object Cache
  * Plugin URI: https://github.com/andrewbevitt/uwsgi-object-cache
  * Description: WordPress Object Cache built on top of uWSGI.
- * Version: 1.0.1
+ * Version: 1.1
  * Author: Andrew Bevitt
  * Author URI: http://andrewbevitt.com/
  * License: GPL2
@@ -39,7 +39,7 @@
  */
 
 
-function wp_cache_add( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
+function wp_cache_add( $key, $data, $group = '', $expire = 0 ) {
 	global $wp_object_cache;
 	return $wp_object_cache->add( $key, $data, $group, (int) $expire );
 }
@@ -47,12 +47,12 @@ function wp_cache_add( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
 // This always returns TRUE as the uWSGI cache doesn't need to be closed
 function wp_cache_close() { return true; }
 
-function wp_cache_decr( $key, $offset = 1, $group = UWSGI_CACHE ) {
+function wp_cache_decr( $key, $offset = 1, $group = '' ) {
 	global $wp_object_cache;
 	return $wp_object_cache->decr( $key, $offset, $group );
 }
 
-function wp_cache_delete( $key, $group = UWSGI_CACHE ) {
+function wp_cache_delete( $key, $group = '' ) {
 	global $wp_object_cache;
 	return $wp_object_cache->delete($key, $group);
 }
@@ -62,12 +62,12 @@ function wp_cache_flush() {
 	return $wp_object_cache->flush();
 }
 
-function wp_cache_get( $key, $group = UWSGI_CACHE, $force = false, &$found = null ) {
+function wp_cache_get( $key, $group = '', $force = false, &$found = null ) {
 	global $wp_object_cache;
 	return $wp_object_cache->get( $key, $group, $force, $found );
 }
 
-function wp_cache_incr( $key, $offset = 1, $group = UWSGI_CACHE ) {
+function wp_cache_incr( $key, $offset = 1, $group = '' ) {
 	global $wp_object_cache;
 	return $wp_object_cache->incr( $key, $offset, $group );
 }
@@ -76,12 +76,12 @@ function wp_cache_init() {
 	$GLOBALS['wp_object_cache'] = new WP_Object_Cache();
 }
 
-function wp_cache_replace( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
+function wp_cache_replace( $key, $data, $group = '', $expire = 0 ) {
 	global $wp_object_cache;
 	return $wp_object_cache->replace( $key, $data, $group, (int) $expire );
 }
 
-function wp_cache_set( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
+function wp_cache_set( $key, $data, $group = '', $expire = 0 ) {
 	global $wp_object_cache;
 	return $wp_object_cache->set( $key, $data, $group, (int) $expire );
 }
@@ -122,10 +122,34 @@ class WP_Object_Cache {
 	var $blog_prefix;
 
 	/**
+	 * Returns an updated key for this group in the key/group cache.
+	 * Eventually this should allow for some keys to pass unchanged i.e. when
+	 * using uwsgi's WebCache URI's as keys. But for now is just group:key.
+	 */
+	private function cache_key( $key, $group ) {
+		return $group . ':' . $key;
+	}
+
+	/**
+	 * Returns the name of the cache for this key / group.
+	 * Eventually this should allow multi-caches but for now just UWSGI_CACHE.
+	 */
+	private function cache_name( $key, $group ) {
+		return UWSGI_CACHE;
+	}
+
+	/**
+	 * Returns names of all active uwsgi cache(s).
+	 * Eventually this should match names from 'cache_name' above.
+	 */
+	private function cache_names() {
+		return array( UWSGI_CACHE );
+	}
+
+	/**
 	 * Wrapper around the uwsgi_cache_X functions to serialize and unserialize
 	 * values before and after caching. The uWSGI cache always returns as a
 	 * string otherwise.
-	 * TODO
 	 */
 	private function _su( $which, $key, $dataRaw, $group, $expire ) {
 		if ( ! array_key_exists( $group, $this->groups ) )
@@ -138,9 +162,11 @@ class WP_Object_Cache {
 		} else {
 			$data = serialize( $dataRaw );
 			if ( $which == 'set' )
-				return ( uwsgi_cache_set( $key, $data, $expire, $group ) ) ? TRUE : FALSE;
+				return ( uwsgi_cache_set( $this->cache_key( $key, $group ), $data,
+					$expire, $this->cache_name( $key, $group ) ) ) ? TRUE : FALSE;
 			elseif ( $which == 'update' )
-				return ( uwsgi_cache_update( $key, $data, $expire, $group ) ) ? TRUE : FALSE;
+				return ( uwsgi_cache_update( $this->cache_key( $key, $group ), $data,
+					$expire, $this->cache_name( $key, $group ) ) ) ? TRUE : FALSE;
 		}
 	}
 	private function _set( $key, $dataRaw, $group, $expire ) {
@@ -161,7 +187,8 @@ class WP_Object_Cache {
 				return $output;
 			}
 		} else {
-			if ( ! is_null( $data = uwsgi_cache_get( $key, $group ) ) ) {
+			if ( ! is_null( $data = uwsgi_cache_get( $this->cache_key( $key, $group ),
+					$this->cache_name( $key, $group ) ) ) ) {
 				$found = TRUE;
 				$output = unserialize( $data );
 				if ( is_object( $output ) )
@@ -176,7 +203,6 @@ class WP_Object_Cache {
 	/**
 	 * Utility function to determine whether a key exists in the cache.
 	 *
-	 * TODO
 	 * @access private
 	 */
 	private function _exists( $key, $group ) {
@@ -184,7 +210,8 @@ class WP_Object_Cache {
 			return false;
 		if ( ! $this->groups[ $group ] )
 			return ( array_key_exists( $key, $this->cache ) ) ? TRUE : FALSE;
-		return ( uwsgi_cache_exists( $key, $group ) ) ? TRUE : FALSE;
+		return ( uwsgi_cache_exists( $this->cache_key( $key, $group ), 
+			$this->cache_name( $key, $group ) ) ) ? TRUE : FALSE;
 	}
 
 	/**
@@ -196,7 +223,7 @@ class WP_Object_Cache {
 	 * @return string The derived key for this object
 	 * @access private
 	 */
-	private function _key( $key, $group = UWSGI_CACHE ) {
+	private function _key( $key, $group = '' ) {
 		$id = $key;
 		if ( $this->multisite && ( ! ( isset( $this->groups[ $group ] ) && $this->groups[ $group ] ) ) )
 			$id = $this->blog_prefix . $key;
@@ -204,11 +231,12 @@ class WP_Object_Cache {
 	}
 
 	/**
-	 * TODO
+	 * Makes sure the given group is valid. If not a registered group creates
+	 * an in-memory only group. Assigns 'uwsgi-object-cache' if empty given.
 	 */
 	private function _sanitize_group( $group ) {
 		if ( empty( $group ) )
-			$group = UWSGI_CACHE;
+			$group = 'uwsgi-object-cache'; // and default is fine
 		if ( ! array_key_exists( $group, $this->groups ) )
 			$this->groups[ $group ] = false;
 		return $group;
@@ -227,7 +255,7 @@ class WP_Object_Cache {
 	 * @param int $expire When to expire the cache contents
 	 * @return bool False if cache key and group already exist, true on success
 	 */
-	function add( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
+	function add( $key, $data, $group = '', $expire = 0 ) {
 		if ( function_exists( 'wp_suspend_cache_addition' ) && wp_suspend_cache_addition() )
 			return false;
 
@@ -251,7 +279,8 @@ class WP_Object_Cache {
 
 	/**
 	 * Sets which groups should not go to uWSGI but should stay in memory.
-	 * TODO
+	 *
+	 * @param array $groups List of groups that are non-persistent.
 	 */
 	function add_non_persistent_groups( $groups ) {
 		$groups = (array) $groups;
@@ -267,7 +296,7 @@ class WP_Object_Cache {
 	 * @param string $group The group the key is in.
 	 * @return false|int False on failure, the item's new value on success.
 	 */
-	function decr( $key, $offset = 1, $group = UWSGI_CACHE ) {
+	function decr( $key, $offset = 1, $group = '' ) {
 		$group = $this->_sanitize_group( $group );
 		$key = $this->_key( $key, $group );
 		if ( ! $this->_exists( $key, $group ) )
@@ -293,7 +322,7 @@ class WP_Object_Cache {
 	 * @param bool $deprecated Deprecated.
 	 * @return bool False if the contents weren't deleted and true on success
 	 */
-	function delete( $key, $group = UWSGI_CACHE, $deprecated = false ) {
+	function delete( $key, $group = '', $deprecated = false ) {
 		$group = $this->_sanitize_group( $group );
 		$key = $this->_key( $key, $group );
         if ( ! $this->groups[ $group ] ) {
@@ -302,7 +331,8 @@ class WP_Object_Cache {
                 return TRUE;
             }
         } else {
-            if ( uwsgi_cache_del( $key, $group ) ) {
+            if ( uwsgi_cache_del( $this->cache_key( $key, $group ),
+					$this->cache_name( $key, $group ) ) ) {
                 return TRUE;
             }
         }
@@ -318,7 +348,9 @@ class WP_Object_Cache {
 	 */
 	function flush() {
 		$this->cache = array ();
-		// TODO: uwsgi_cache_clear( $group ??? )
+		foreach ( $this->cache_names() as $cache ) {
+			uwsgi_cache_clear( $cache );
+		}
 		return true;
 	}
 
@@ -339,7 +371,7 @@ class WP_Object_Cache {
 	 * @return bool|mixed False on failure to retrieve contents or the cache
 	 *		contents on success
 	 */
-	function get( $key, $group = UWSGI_CACHE, $force = false, &$found = null ) {
+	function get( $key, $group = '', $force = false, &$found = null ) {
 		$group = $this->_sanitize_group( $group );
 		$key = $this->_key( $key, $group );
 
@@ -368,7 +400,7 @@ class WP_Object_Cache {
 	 * @param string $group The group the key is in.
 	 * @return false|int False on failure, the item's new value on success.
 	 */
-	function incr( $key, $offset = 1, $group = UWSGI_CACHE ) {
+	function incr( $key, $offset = 1, $group = '' ) {
         $group = $this->_sanitize_group( $group );
         $key = $this->_key( $key, $group );
         if ( ! $this->_exists( $key, $group ) )
@@ -396,7 +428,7 @@ class WP_Object_Cache {
 	 * @param int $expire When to expire the cache contents
 	 * @return bool False if not exists, true if contents were replaced
 	 */
-	function replace( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
+	function replace( $key, $data, $group = '', $expire = 0 ) {
 		$group = $this->_sanitize_group( $group );
 		$id = $this->_key( $key, $group );
 		if ( ! $this->_exists( $id, $group ) )
@@ -413,7 +445,7 @@ class WP_Object_Cache {
 	 * @param int $expire When to expire the cache contents
 	 * @return bool Result of the cache update operation
 	 */
-	function set( $key, $data, $group = UWSGI_CACHE, $expire = 0 ) {
+	function set( $key, $data, $group = '', $expire = 0 ) {
 		$group = $this->_sanitize_group( $group );
 		$key = $this->_key( $key, $group );
 		return $this->_update( $key, $data, $group, (int) $expire );
